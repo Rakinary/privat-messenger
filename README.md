@@ -30,12 +30,22 @@ Use the provided scripts for easy setup and running:
 run.bat
 ```
 
+The scripts will ask you to choose between:
+- **Local development**: Runs both backend and mobile app locally
+- **Remote backend**: Runs only mobile app, connects to remote backend via tunnel
+
 The scripts will automatically:
-- Install dependencies for both frontend and backend
+- Install dependencies for frontend and backend (local mode)
 - Set up environment variables (copy `.env.example` to `.env` if needed)
-- Start PostgreSQL database with Docker
-- Run Prisma migrations
-- Start both backend (http://localhost:3000) and mobile (Expo) servers
+- Start PostgreSQL database with Docker (local mode)
+- Run Prisma migrations (local mode)
+- Start backend (http://localhost:3000) and mobile (Expo) servers
+
+### Remote Backend Mode
+
+If your backend is deployed remotely (e.g., via Cloudflare Tunnel), choose "Remote backend" mode when running the scripts. The mobile app will automatically connect to the remote API URL configured in `mobile/src/api/client.ts`.
+
+To update the remote URL, edit the `API_URL` in `mobile/src/api/client.ts` or set the `API_URL` environment variable.
 
 ### Manual Setup
 

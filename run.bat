@@ -13,8 +13,31 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Ask user for mode
+echo Choose mode:
+echo 1) Local development (backend + mobile)
+echo 2) Remote backend (only mobile, backend is remote)
+set /p choice="Enter choice (1 or 2): "
+
+if "%choice%"=="1" (
+    set MODE=local
+    echo 🏠 Running in LOCAL mode
+) else if "%choice%"=="2" (
+    set MODE=remote
+    echo 🌐 Running in REMOTE mode (only mobile app)
+) else (
+    echo ❌ Invalid choice
+    pause
+    exit /b 1
+)
+
 REM Function to start backend
 :start_backend
+if "%MODE%"=="remote" (
+    echo 🌐 Skipping backend start (remote mode)
+    goto :mobile
+)
+
 echo 🔧 Starting backend...
 cd backend
 
@@ -61,6 +84,15 @@ REM Start mobile
 echo 📱 Starting mobile app...
 cd mobile
 
+REM Set API URL based on mode
+if "%MODE%"=="local" (
+    set API_URL=http://localhost:3000
+    echo 🔗 Using local backend: %API_URL%
+) else (
+    set API_URL=https://sic-their-personnel-upcoming.trycloudflare.com
+    echo 🔗 Using remote backend: %API_URL%
+)
+
 REM Install dependencies if node_modules doesn't exist
 if not exist "node_modules" (
     echo 📦 Installing mobile dependencies...
@@ -75,17 +107,26 @@ cd ..
 echo ✅ Mobile app started
 
 echo.
-echo 🎉 Both services are running!
-echo 📱 Mobile: Open Expo app on your device or press 'w' in terminal for web
-echo 🔧 Backend: http://localhost:3000
+echo 🎉 Services are running!
+if "%MODE%"=="local" (
+    echo 📱 Mobile: Open Expo app on your device or press 'w' in terminal for web
+    echo 🔧 Backend: http://localhost:3000
+) else (
+    echo 📱 Mobile: Open Expo app on your device or press 'w' in terminal for web
+    echo 🔗 Connected to remote backend
+)
 echo.
 echo Press any key to stop all services...
 
 pause >nul
 
 REM Stop services
-echo 🛑 Stopping services...
-docker-compose down
+if "%MODE%"=="local" (
+    echo 🛑 Stopping services...
+    docker-compose down
+) else (
+    echo 🛑 Stopping mobile app...
+)
 taskkill /f /im node.exe >nul 2>&1
 
 echo ✅ All services stopped

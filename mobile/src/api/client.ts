@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Replace with your current Cloudflare Tunnel / ngrok URL when it changes.
-export const API_URL = 'https://sic-their-personnel-upcoming.trycloudflare.com';
+// API URL - uses environment variable if set, otherwise defaults to remote tunnel
+export const API_URL = process.env.API_URL || 'https://sic-their-personnel-upcoming.trycloudflare.com';
 
 export const api = axios.create({
   baseURL: API_URL,

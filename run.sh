@@ -25,8 +25,30 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
+# Ask user for mode
+echo "Choose mode:"
+echo "1) Local development (backend + mobile)"
+echo "2) Remote backend (only mobile, backend is remote)"
+read -p "Enter choice (1 or 2): " choice
+
+if [ "$choice" = "1" ]; then
+    MODE="local"
+    echo "🏠 Running in LOCAL mode"
+elif [ "$choice" = "2" ]; then
+    MODE="remote"
+    echo "🌐 Running in REMOTE mode (only mobile app)"
+else
+    echo "❌ Invalid choice"
+    exit 1
+fi
+
 # Function to start backend
 start_backend() {
+    if [ "$MODE" = "remote" ]; then
+        echo "🌐 Skipping backend start (remote mode)"
+        return 0
+    fi
+
     echo "🔧 Starting backend..."
     cd backend
 
@@ -73,6 +95,15 @@ start_mobile() {
     echo "📱 Starting mobile app..."
     cd mobile
 
+    # Set API URL based on mode
+    if [ "$MODE" = "local" ]; then
+        export API_URL="http://localhost:3000"
+        echo "🔗 Using local backend: $API_URL"
+    else
+        export API_URL="https://sic-their-personnel-upcoming.trycloudflare.com"
+        echo "🔗 Using remote backend: $API_URL"
+    fi
+
     # Install dependencies if node_modules doesn't exist
     if [ ! -d "node_modules" ]; then
         echo "📦 Installing mobile dependencies..."
@@ -96,14 +127,23 @@ fi
 
 # Wait for user input to stop
 echo ""
-echo "🎉 Both services are running!"
-echo "📱 Mobile: Open Expo app on your device or press 'w' in terminal for web"
-echo "🔧 Backend: http://localhost:3000"
+echo "🎉 Services are running!"
+if [ "$MODE" = "local" ]; then
+    echo "📱 Mobile: Open Expo app on your device or press 'w' in terminal for web"
+    echo "🔧 Backend: http://localhost:3000"
+else
+    echo "📱 Mobile: Open Expo app on your device or press 'w' in terminal for web"
+    echo "🔗 Connected to remote backend"
+fi
 echo ""
 echo "Press Ctrl+C to stop all services"
 
 # Wait for Ctrl+C
-trap 'echo ""; echo "🛑 Stopping services..."; kill $BACKEND_PID $MOBILE_PID 2>/dev/null; docker-compose down; exit 0' INT
+if [ "$MODE" = "local" ]; then
+    trap 'echo ""; echo "🛑 Stopping services..."; kill $BACKEND_PID $MOBILE_PID 2>/dev/null; docker-compose down; exit 0' INT
+else
+    trap 'echo ""; echo "🛑 Stopping mobile app..."; kill $MOBILE_PID 2>/dev/null; exit 0' INT
+fi
 
 # Keep script running
 wait
