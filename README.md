@@ -14,9 +14,34 @@ A full-stack messenger application with mobile frontend (React Native/Expo) and 
 - Docker and Docker Compose (for backend database)
 - Expo CLI (for mobile development)
 
-## Setup and Running
+## Quick Start
 
-### Backend
+### Automatic Setup (Recommended)
+
+Use the provided scripts for easy setup and running:
+
+**On macOS/Linux:**
+```bash
+./run.sh
+```
+
+**On Windows:**
+```bash
+run.bat
+```
+
+The scripts will automatically:
+- Install dependencies for both frontend and backend
+- Set up environment variables (copy `.env.example` to `.env` if needed)
+- Start PostgreSQL database with Docker
+- Run Prisma migrations
+- Start both backend (http://localhost:3000) and mobile (Expo) servers
+
+### Manual Setup
+
+If you prefer manual setup, follow these steps:
+
+#### Backend Setup
 
 1. Navigate to the backend directory:
    ```bash
@@ -52,9 +77,7 @@ A full-stack messenger application with mobile frontend (React Native/Expo) and 
    npm run start:dev
    ```
 
-The backend will be running on `http://localhost:3000`
-
-### Mobile
+#### Mobile Setup
 
 1. Navigate to the mobile directory:
    ```bash
