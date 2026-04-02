@@ -189,8 +189,11 @@ echo ☁️ Starting Cloudflare tunnel for %TUNNEL_NAME% on port %TUNNEL_PORT%..
 start "cf-%TUNNEL_NAME%" /b cmd /c "cloudflared tunnel --url http://localhost:%TUNNEL_PORT% --no-autoupdate > \"%CLOUDFLARE_LOG%\" 2>&1"
 
 for /L %%I in (1,1,30) do (
-  for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "$m = Select-String -Path '%CLOUDFLARE_LOG%' -Pattern 'https://[-a-zA-Z0-9]+\.trycloudflare\.com' -AllMatches -ErrorAction SilentlyContinue ^| ForEach-Object { $_.Matches } ^| ForEach-Object { $_.Value } ^| Select-Object -First 1; if ($m) { $m }"`) do (
-    set "LAST_TUNNEL_URL=%%U"
+  for /f "delims=" %%U in ('findstr /R /C:"https://[a-zA-Z0-9-][a-zA-Z0-9-]*\.trycloudflare\.com" "%CLOUDFLARE_LOG%"') do (
+    for %%T in (%%U) do (
+      echo %%T | findstr /R /C:"https://[a-zA-Z0-9-][a-zA-Z0-9-]*\.trycloudflare\.com" >nul && set "LAST_TUNNEL_URL=%%T"
+    )
+    if defined LAST_TUNNEL_URL goto :tunnel_url_found
   )
 
   if defined LAST_TUNNEL_URL (
@@ -199,6 +202,12 @@ for /L %%I in (1,1,30) do (
   )
 
   timeout /t 1 /nobreak >nul
+)
+
+:tunnel_url_found
+if defined LAST_TUNNEL_URL (
+  echo ✅ Cloudflare tunnel ready (%TUNNEL_NAME%): !LAST_TUNNEL_URL!
+  exit /b 0
 )
 
 echo ❌ Timed out waiting for Cloudflare tunnel URL (%TUNNEL_NAME%).
