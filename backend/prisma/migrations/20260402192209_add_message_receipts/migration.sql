@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "ChatMember" ADD COLUMN     "lastDeliveredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

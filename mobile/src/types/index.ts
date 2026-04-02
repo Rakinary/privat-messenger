@@ -2,18 +2,24 @@ export type SessionUser = {
   id: string;
   email: string;
   username: string;
+  createdAt?: string;
+  lastSeenAt?: string;
 };
 
 export type ChatUser = {
   id: string;
   username: string;
   email?: string;
+  createdAt?: string;
+  lastSeenAt?: string;
 };
 
 export type ChatMember = {
   id: string;
   role?: string;
   userId?: string;
+  lastDeliveredAt?: string;
+  lastReadAt?: string;
   user?: ChatUser;
 };
 
@@ -42,6 +48,7 @@ export type ChatMessage = {
   replyTo?: {
     id: string;
     text: string | null;
+    deletedAt?: string | null;
     sender?: {
       id: string;
       username?: string;
@@ -49,6 +56,7 @@ export type ChatMessage = {
   };
   likes?: {
     id: string;
+    emoji: string;
     user: {
       id: string;
       username: string;
@@ -66,6 +74,7 @@ export type Chat = {
   createdAt?: string;
   members?: ChatMember[];
   messages?: ChatMessage[];
+  unreadCount?: number;
 };
 
 export type RootStackParamList = {
@@ -74,6 +83,12 @@ export type RootStackParamList = {
   Chat: {
     chatId: string;
     title?: string;
+  };
+  UserProfile: {
+    userId: string;
+  };
+  GroupProfile: {
+    chatId: string;
   };
 };
 

@@ -3,6 +3,11 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 
+type PresenceSnapshot = {
+  id: string;
+  lastSeenAt: Date | null;
+};
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -74,6 +79,7 @@ export class UsersService {
         email: true,
         username: true,
         createdAt: true,
+        lastSeenAt: true,
       },
     });
 
@@ -112,6 +118,25 @@ export class UsersService {
         expoPushToken: true,
       },
     });
+  }
+
+  async touchLastSeen(userId: string, at = new Date()): Promise<void> {
+    await this.prisma.$executeRaw`
+      UPDATE "User"
+      SET "lastSeenAt" = ${at}
+      WHERE "id" = ${userId}
+    `;
+  }
+
+  async getPresenceSnapshot(userId: string): Promise<PresenceSnapshot | null> {
+    const rows = await this.prisma.$queryRaw<PresenceSnapshot[]>`
+      SELECT "id", "lastSeenAt"
+      FROM "User"
+      WHERE "id" = ${userId}
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
   }
 }
 

@@ -13,7 +13,8 @@
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "seed:users": "tsx prisma/seed-users.ts",
-    "create:user": "tsx scripts/create-user.ts"
+    "create:user": "tsx scripts/create-user.ts",
+    "dedupe:direct-chats": "tsx scripts/dedupe-direct-chats.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.2",

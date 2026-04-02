@@ -33,6 +33,16 @@ export class ChatsController {
     return this.chatsService.listChatsForUser(user.sub);
   }
 
+  @Get(':chatId')
+  getById(@CurrentUser() user: JwtUser, @Param('chatId') chatId: string) {
+    return this.chatsService.getChatByIdForUser(chatId, user.sub);
+  }
+
+  @Post(':chatId/read')
+  markRead(@CurrentUser() user: JwtUser, @Param('chatId') chatId: string) {
+    return this.chatsService.markChatAsRead(chatId, user.sub);
+  }
+
   @Get(':chatId/messages')
   listMessages(
     @CurrentUser() user: JwtUser,

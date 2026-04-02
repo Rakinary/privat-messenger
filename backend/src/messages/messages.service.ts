@@ -1,8 +1,43 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { MessageType } from '@prisma/client';
 import { ChatsService } from '../chats/chats.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMessageDto } from './dto/create-message.dto';
+
+const messageInclude = {
+  sender: {
+    select: {
+      id: true,
+      username: true,
+    },
+  },
+  attachment: true,
+  replyTo: {
+    include: {
+      sender: {
+        select: {
+          id: true,
+          username: true,
+        },
+      },
+    },
+  },
+  likes: {
+    include: {
+      user: {
+        select: {
+          id: true,
+          username: true,
+        },
+      },
+    },
+  },
+  _count: {
+    select: {
+      likes: true,
+    },
+  },
+} as const;
 
 @Injectable()
 export class MessagesService {
@@ -32,7 +67,6 @@ export class MessagesService {
       }
     }
 
-    // Validate replyToId if provided
     if (dto.replyToId) {
       const replyToMessage = await this.prisma.message.findUnique({
         where: { id: dto.replyToId },
@@ -47,7 +81,7 @@ export class MessagesService {
       }
     }
 
-    const message = await this.prisma.message.create({
+    return this.prisma.message.create({
       data: {
         chatId: dto.chatId,
         senderId: currentUserId,
@@ -56,102 +90,24 @@ export class MessagesService {
         replyToId: dto.replyToId,
         type: messageType,
       },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            username: true,
-          },
-        },
-        attachment: true,
-        replyTo: {
-          include: {
-            sender: {
-              select: {
-                id: true,
-                username: true,
-              },
-            },
-          },
-        },
-        likes: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            likes: true,
-          },
-        },
-      },
+      include: messageInclude,
     });
-
-    return message;
   }
 
   async findOne(id: string) {
     return this.prisma.message.findUnique({
       where: { id },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            username: true,
-          },
-        },
-        attachment: true,
-        replyTo: {
-          include: {
-            sender: {
-              select: {
-                id: true,
-                username: true,
-              },
-            },
-          },
-        },
-        likes: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            likes: true,
-          },
-        },
-      },
+      include: messageInclude,
     });
   }
 
-  async toggleLike(currentUserId: string, messageId: string) {
-    // Check if user can access the message
-    const message = await this.prisma.message.findUnique({
-      where: { id: messageId },
-      include: { chat: { include: { members: true } } },
-    });
+  async setReaction(currentUserId: string, messageId: string, emoji = '❤️') {
+    const message = await this.requireAccessibleMessage(messageId, currentUserId);
 
-    if (!message) {
-      throw new NotFoundException('Message not found');
+    if (message.deletedAt) {
+      throw new BadRequestException('Cannot react to deleted message');
     }
 
-    const isMember = message.chat.members.some(m => m.userId === currentUserId);
-    if (!isMember) {
-      throw new BadRequestException('You are not a member of this chat');
-    }
-
-    // Check if like already exists
     const existingLike = await this.prisma.messageLike.findUnique({
       where: {
         messageId_userId: {
@@ -161,26 +117,88 @@ export class MessagesService {
       },
     });
 
-    if (existingLike) {
-      // Remove like
+    if (existingLike?.emoji === emoji) {
       await this.prisma.messageLike.delete({
         where: { id: existingLike.id },
       });
-      return { liked: false };
+
+      return {
+        removed: true,
+        emoji: null,
+        message: await this.findOne(messageId),
+      };
+    }
+
+    if (existingLike) {
+      await this.prisma.messageLike.update({
+        where: { id: existingLike.id },
+        data: { emoji },
+      });
     } else {
-      // Add like
       await this.prisma.messageLike.create({
         data: {
           messageId,
           userId: currentUserId,
+          emoji,
         },
       });
-      return { liked: true };
     }
+
+    return {
+      removed: false,
+      emoji,
+      message: await this.findOne(messageId),
+    };
   }
 
-  async getMessageLikes(messageId: string) {
-    const likes = await this.prisma.messageLike.findMany({
+  async updateMessage(currentUserId: string, messageId: string, text: string) {
+    const message = await this.requireOwnedEditableMessage(messageId, currentUserId);
+
+    if (message.type === MessageType.SYSTEM) {
+      throw new BadRequestException('System message cannot be edited');
+    }
+
+    const trimmedText = text.trim();
+    if (!trimmedText) {
+      throw new BadRequestException('Message text cannot be empty');
+    }
+
+    await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        text: trimmedText,
+        editedAt: new Date(),
+      },
+    });
+
+    return this.findOne(messageId);
+  }
+
+  async deleteMessage(currentUserId: string, messageId: string) {
+    const message = await this.requireOwnedEditableMessage(messageId, currentUserId);
+
+    if (message.deletedAt) {
+      return this.findOne(messageId);
+    }
+
+    if (message.type === MessageType.SYSTEM) {
+      throw new BadRequestException('System message cannot be deleted');
+    }
+
+    await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        text: null,
+        attachmentId: null,
+        deletedAt: new Date(),
+      },
+    });
+
+    return this.findOne(messageId);
+  }
+
+  async getMessageReactions(messageId: string) {
+    return this.prisma.messageLike.findMany({
       where: { messageId },
       include: {
         user: {
@@ -192,8 +210,46 @@ export class MessagesService {
       },
       orderBy: { createdAt: 'asc' },
     });
+  }
 
-    return likes;
+  private async requireAccessibleMessage(messageId: string, currentUserId: string) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: { chat: { include: { members: true } } },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    const isMember = message.chat.members.some((member) => member.userId === currentUserId);
+    if (!isMember) {
+      throw new BadRequestException('You are not a member of this chat');
+    }
+
+    return message;
+  }
+
+  private async requireOwnedEditableMessage(messageId: string, currentUserId: string) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        senderId: true,
+        type: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.senderId !== currentUserId) {
+      throw new ForbiddenException('You can modify only your own messages');
+    }
+
+    return message;
   }
 
   private normalizeMessageType(type?: string): MessageType {

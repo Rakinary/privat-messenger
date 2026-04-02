@@ -33,6 +33,7 @@ model User {
   username     String       @unique
   passwordHash String
   createdAt    DateTime     @default(now())
+  lastSeenAt   DateTime?    @default(now())
   expoPushToken String?      @unique
 
   memberships  ChatMember[]
@@ -57,6 +58,8 @@ model ChatMember {
   userId    String
   role      MemberRole @default(MEMBER)
   joinedAt  DateTime   @default(now())
+  lastDeliveredAt DateTime @default(now())
+  lastReadAt DateTime  @default(now())
 
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -104,6 +107,7 @@ model MessageLike {
   id        String   @id @default(cuid())
   messageId String
   userId    String
+  emoji     String   @default("❤️")
   createdAt DateTime @default(now())
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)

@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
+  Easing,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -19,9 +22,19 @@ type Props = {
 };
 
 export default function LoginScreen({ onLogin }: Props) {
-  const [email, setEmail] = useState('maksdrobotushchenko@gmail.com');
-  const [password, setPassword] = useState('Otakuoasis1');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const appear = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(appear, {
+      toValue: 1,
+      duration: 420,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [appear]);
 
   const handleLogin = async () => {
     try {
@@ -53,15 +66,39 @@ export default function LoginScreen({ onLogin }: Props) {
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.logoWrap}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoText}>PM</Text>
+        <Animated.View
+          style={[
+            styles.logoWrap,
+            {
+              opacity: appear,
+              transform: [
+                {
+                  translateY: appear.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.logoFrame}>
+            <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
           </View>
           <Text style={styles.title}>Private Messenger</Text>
           <Text style={styles.subtitle}>Fast, self-hosted, clean.</Text>
-        </View>
+        </Animated.View>
 
-        <View style={styles.card}>
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              opacity: appear,
+              transform: [
+                {
+                  translateY: appear.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }),
+                },
+              ],
+            },
+          ]}
+        >
           <Text style={styles.label}>Email</Text>
           <TextInput
             style={styles.input}
@@ -86,7 +123,7 @@ export default function LoginScreen({ onLogin }: Props) {
           <Pressable style={styles.button} onPress={handleLogin} disabled={loading}>
             <Text style={styles.buttonText}>{loading ? 'Signing in…' : 'Sign in'}</Text>
           </Pressable>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -106,23 +143,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
   },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#2d6cdf',
+  logoFrame: {
+    width: 110,
+    height: 110,
+    borderRadius: 26,
+    backgroundColor: '#0f213f',
+    borderWidth: 1,
+    borderColor: '#2b406b',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 18,
-    shadowColor: '#2d6cdf',
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
+    shadowColor: '#061127',
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
   },
-  logoText: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '800',
+  logoImage: {
+    width: 84,
+    height: 84,
   },
   title: {
     color: '#fff',

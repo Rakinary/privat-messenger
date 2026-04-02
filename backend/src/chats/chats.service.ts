@@ -33,15 +33,30 @@ export class ChatsService {
       },
       include: {
         members: true,
+        messages: {
+          take: 1,
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            createdAt: true,
+          },
+        },
       },
     });
 
-    const existing = currentUserChats.find((chat) => {
+    const existingCandidates = currentUserChats.filter((chat) => {
       const ids = chat.members.map((member) => member.userId).sort();
       return ids.length === 2 &&
         ids[0] === [currentUserId, dto.otherUserId].sort()[0] &&
         ids[1] === [currentUserId, dto.otherUserId].sort()[1];
     });
+
+    const existing = existingCandidates.sort((left, right) => {
+      const leftActivity = new Date(left.messages[0]?.createdAt ?? left.createdAt).getTime();
+      const rightActivity = new Date(right.messages[0]?.createdAt ?? right.createdAt).getTime();
+      return rightActivity - leftActivity;
+    })[0];
 
     if (existing) {
       return this.getChatByIdForUser(existing.id, currentUserId);
@@ -111,7 +126,7 @@ export class ChatsService {
   }
 
   async listChatsForUser(currentUserId: string) {
-    return this.prisma.chat.findMany({
+    const chats = await this.prisma.chat.findMany({
       where: {
         members: {
           some: {
@@ -128,6 +143,7 @@ export class ChatsService {
                 email: true,
                 username: true,
                 createdAt: true,
+                lastSeenAt: true,
               },
             },
           },
@@ -152,6 +168,69 @@ export class ChatsService {
         createdAt: 'desc',
       },
     });
+
+    const directDeduped = new Map<string, (typeof chats)[number]>();
+    const nonDirectChats: (typeof chats)[number][] = [];
+
+    for (const chat of chats) {
+      if (chat.type !== ChatType.DIRECT) {
+        nonDirectChats.push(chat);
+        continue;
+      }
+
+      const peer = chat.members.find((member) => member.userId !== currentUserId)?.userId;
+      if (!peer) {
+        nonDirectChats.push(chat);
+        continue;
+      }
+
+      const existing = directDeduped.get(peer);
+      if (!existing) {
+        directDeduped.set(peer, chat);
+        continue;
+      }
+
+      const existingActivity = new Date(
+        existing.messages[0]?.createdAt ?? existing.createdAt,
+      ).getTime();
+      const currentActivity = new Date(chat.messages[0]?.createdAt ?? chat.createdAt).getTime();
+
+      if (currentActivity > existingActivity) {
+        directDeduped.set(peer, chat);
+      }
+    }
+
+    const uniqueChats = [...nonDirectChats, ...Array.from(directDeduped.values())];
+
+    const chatsWithUnread = await Promise.all(
+      uniqueChats.map(async (chat) => {
+        const membership = chat.members.find((member) => member.userId === currentUserId);
+        const unreadCount = await this.prisma.message.count({
+          where: {
+            chatId: chat.id,
+            senderId: {
+              not: currentUserId,
+            },
+            createdAt: membership?.lastReadAt
+              ? {
+                  gt: membership.lastReadAt,
+                }
+              : undefined,
+          },
+        });
+
+        return {
+          ...chat,
+          unreadCount,
+        };
+      }),
+    );
+
+    return chatsWithUnread.sort((left, right) => {
+      const leftActivity = new Date(left.messages[0]?.createdAt ?? left.createdAt).getTime();
+      const rightActivity = new Date(right.messages[0]?.createdAt ?? right.createdAt).getTime();
+      return rightActivity - leftActivity;
+    });
   }
 
   async getChatByIdForUser(chatId: string, currentUserId: string) {
@@ -168,6 +247,7 @@ export class ChatsService {
                 email: true,
                 username: true,
                 createdAt: true,
+                lastSeenAt: true,
               },
             },
           },
@@ -210,6 +290,31 @@ export class ChatsService {
           },
         },
         attachment: true,
+        replyTo: {
+          include: {
+            sender: {
+              select: {
+                id: true,
+                username: true,
+              },
+            },
+          },
+        },
+        likes: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+              },
+            },
+          },
+        },
+        _count: {
+          select: {
+            likes: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -225,6 +330,169 @@ export class ChatsService {
     const messages = await this.prisma.message.findMany(pagination);
 
     return messages.reverse();
+  }
+
+  async markChatAsRead(chatId: string, currentUserId: string) {
+    const membership = await this.ensureUserIsChatMember(chatId, currentUserId);
+    const latestMessage = await this.prisma.message.findFirst({
+      where: { chatId },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        createdAt: true,
+      },
+    });
+
+    const lastReadAt = latestMessage?.createdAt ?? new Date();
+    const lastDeliveredAt = membership.lastDeliveredAt && membership.lastDeliveredAt > lastReadAt
+      ? membership.lastDeliveredAt
+      : lastReadAt;
+
+    if (
+      membership.lastReadAt &&
+      membership.lastReadAt >= lastReadAt &&
+      membership.lastDeliveredAt &&
+      membership.lastDeliveredAt >= lastDeliveredAt
+    ) {
+      return {
+        ok: true,
+        chatId,
+        userId: currentUserId,
+        lastDeliveredAt: membership.lastDeliveredAt,
+        lastReadAt: membership.lastReadAt,
+      };
+    }
+
+    await this.prisma.chatMember.update({
+      where: {
+        chatId_userId: {
+          chatId,
+          userId: currentUserId,
+        },
+      },
+      data: {
+        lastDeliveredAt,
+        lastReadAt,
+      },
+    });
+
+    return {
+      ok: true,
+      chatId,
+      userId: currentUserId,
+      lastDeliveredAt,
+      lastReadAt,
+    };
+  }
+
+  async markChatAsDelivered(chatId: string, currentUserId: string, deliveredAt?: Date) {
+    const membership = await this.ensureUserIsChatMember(chatId, currentUserId);
+    const latestMessage = await this.prisma.message.findFirst({
+      where: { chatId },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        createdAt: true,
+      },
+    });
+
+    const baseline = deliveredAt ?? latestMessage?.createdAt ?? new Date();
+    const nextDeliveredAt = membership.lastReadAt && membership.lastReadAt > baseline
+      ? membership.lastReadAt
+      : baseline;
+
+    if (membership.lastDeliveredAt && membership.lastDeliveredAt >= nextDeliveredAt) {
+      return {
+        ok: true,
+        changed: false,
+        chatId,
+        userId: currentUserId,
+        lastDeliveredAt: membership.lastDeliveredAt,
+        lastReadAt: membership.lastReadAt,
+      };
+    }
+
+    await this.prisma.chatMember.update({
+      where: {
+        chatId_userId: {
+          chatId,
+          userId: currentUserId,
+        },
+      },
+      data: {
+        lastDeliveredAt: nextDeliveredAt,
+      },
+    });
+
+    return {
+      ok: true,
+      changed: true,
+      chatId,
+      userId: currentUserId,
+      lastDeliveredAt: nextDeliveredAt,
+      lastReadAt: membership.lastReadAt,
+    };
+  }
+
+  async syncDeliveredChatsForUser(currentUserId: string) {
+    const memberships = await this.prisma.chatMember.findMany({
+      where: { userId: currentUserId },
+      select: {
+        chatId: true,
+        userId: true,
+        lastDeliveredAt: true,
+        lastReadAt: true,
+      },
+    });
+
+    const receipts = await Promise.all(
+      memberships.map(async (membership) => {
+        const latestMessage = await this.prisma.message.findFirst({
+          where: { chatId: membership.chatId },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            createdAt: true,
+          },
+        });
+
+        if (!latestMessage?.createdAt) {
+          return null;
+        }
+
+        const targetDeliveredAt = membership.lastReadAt && membership.lastReadAt > latestMessage.createdAt
+          ? membership.lastReadAt
+          : latestMessage.createdAt;
+
+        if (membership.lastDeliveredAt && membership.lastDeliveredAt >= targetDeliveredAt) {
+          return null;
+        }
+
+        await this.prisma.chatMember.update({
+          where: {
+            chatId_userId: {
+              chatId: membership.chatId,
+              userId: currentUserId,
+            },
+          },
+          data: {
+            lastDeliveredAt: targetDeliveredAt,
+          },
+        });
+
+        return {
+          chatId: membership.chatId,
+          userId: currentUserId,
+          lastDeliveredAt: targetDeliveredAt,
+          lastReadAt: membership.lastReadAt,
+        };
+      }),
+    );
+
+    return receipts.filter((receipt): receipt is NonNullable<typeof receipt> => !!receipt);
   }
 
   async ensureUserIsChatMember(chatId: string, userId: string) {

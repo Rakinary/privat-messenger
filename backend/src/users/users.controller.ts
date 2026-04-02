@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { CurrentUser, JwtUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { UsersService } from './users.service';
@@ -15,6 +15,11 @@ export class UsersController {
     @Query('query') query?: string,
   ) {
     return this.usersService.list(user.sub, query);
+  }
+
+  @Get(':id')
+  getById(@Param('id') userId: string) {
+    return this.usersService.findByIdOrThrow(userId);
   }
 
   @Post('push-token')
