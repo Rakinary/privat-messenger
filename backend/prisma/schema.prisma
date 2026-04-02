@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ChatType {
+  DIRECT
+  GROUP
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  GIF
+  FILE
+  SYSTEM
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  username     String       @unique
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  expoPushToken String?      @unique
+
+  memberships  ChatMember[]
+  messages     Message[]    @relation("MessageSender")
+  attachments  Attachment[] @relation("AttachmentUploader")
+}
+
+model Chat {
+  id        String       @id @default(cuid())
+  type      ChatType
+  title     String?
+  createdAt DateTime     @default(now())
+
+  members   ChatMember[]
+  messages  Message[]
+}
+
+model ChatMember {
+  id        String     @id @default(cuid())
+  chatId    String
+  userId    String
+  role      MemberRole @default(MEMBER)
+  joinedAt  DateTime   @default(now())
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, userId])
+}
+
+model Attachment {
+  id           String    @id @default(cuid())
+  uploaderId   String
+  storageKey   String
+  originalName String
+  mimeType     String
+  size         Int
+  url          String
+  createdAt    DateTime  @default(now())
+
+  uploader User      @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
+  messages Message[]
+}
+
+model Message {
+  id           String      @id @default(cuid())
+  chatId        String
+  senderId      String
+  type          MessageType @default(TEXT)
+  text          String?
+  attachmentId  String?
+  createdAt     DateTime    @default(now())
+  editedAt      DateTime?
+  deletedAt     DateTime?
+
+  chat       Chat       @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender     User       @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  attachment Attachment? @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+
+  @@index([chatId, createdAt])
+}

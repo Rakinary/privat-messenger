@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "messenger-mobile",
+    "slug": "messenger-mobile",
+    "version": "1.0.0",
+    "runtimeVersion": "1.0.0",
+    "projectId": "3f4572ba-e4cf-4b38-8ca1-e79e583d8bf5",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "permissions": [
+      "android.permission.POST_NOTIFICATIONS"
+    ],
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "usesFcm": true,
+      "notification": {
+        "color": "#2563eb"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#2563eb",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2e76d6ce-3f45-4771-a64e-e67e58f68646"
+      }
+    },
+    "owner": "rakinary"
+  }
+}
