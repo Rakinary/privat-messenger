@@ -150,6 +150,28 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     await this.sendPushNotifications(chatId, message);
   }
 
+  async broadcastMessageLike(messageId: string, userId: string, liked: boolean) {
+    // Get chat ID from message
+    const message = await this.messagesService.findOne(messageId);
+    if (!message) return;
+
+    const memberIds = await this.chatsService.getChatMemberIds(message.chatId);
+
+    for (const memberId of memberIds) {
+      this.server.to(`user:${memberId}`).emit('message:like', {
+        messageId,
+        userId,
+        liked,
+      });
+    }
+
+    this.server.to(`chat:${message.chatId}`).emit('message:like', {
+      messageId,
+      userId,
+      liked,
+    });
+  }
+
   private async sendPushNotifications(chatId: string, message: any) {
     if (!message || !message.senderId || !message.text) {
       return;

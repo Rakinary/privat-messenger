@@ -38,6 +38,7 @@ model User {
   memberships  ChatMember[]
   messages     Message[]    @relation("MessageSender")
   attachments  Attachment[] @relation("AttachmentUploader")
+  likes        MessageLike[]
 }
 
 model Chat {
@@ -84,6 +85,7 @@ model Message {
   type          MessageType @default(TEXT)
   text          String?
   attachmentId  String?
+  replyToId     String?     // ID сообщения, на которое отвечают
   createdAt     DateTime    @default(now())
   editedAt      DateTime?
   deletedAt     DateTime?
@@ -91,6 +93,21 @@ model Message {
   chat       Chat       @relation(fields: [chatId], references: [id], onDelete: Cascade)
   sender     User       @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
   attachment Attachment? @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+  replyTo    Message?   @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies    Message[]  @relation("MessageReplies") // Сообщения, которые отвечают на это
+  likes      MessageLike[]
 
   @@index([chatId, createdAt])
+}
+
+model MessageLike {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
 }

@@ -15,6 +15,10 @@ export class CreateMessageDto {
 
   @IsOptional()
   @IsString()
+  replyToId?: string;
+
+  @IsOptional()
+  @IsString()
   @IsIn(['text', 'image', 'video', 'gif', 'file', 'system'])
   type?: 'text' | 'image' | 'video' | 'gif' | 'file' | 'system';
 }

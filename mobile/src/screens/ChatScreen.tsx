@@ -27,6 +27,7 @@ export default function ChatScreen({ route, navigation }: Props) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const shouldStickToBottomRef = useRef(true);
 
@@ -71,6 +72,30 @@ export default function ChatScreen({ route, navigation }: Props) {
     setShowScrollToBottom(!isNearBottom);
   };
 
+  const handleLike = async (messageId: string) => {
+    try {
+      await api.post(
+        `/messages/${messageId}/like`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      await loadMessages();
+    } catch (err: any) {
+      Alert.alert(
+        'Could not toggle like',
+        err?.response?.data?.message || err?.message || 'Please try again.',
+      );
+    }
+  };
+
+  const handleReply = (message: ChatMessage) => {
+    setReplyTo(message);
+  };
+
+  const cancelReply = () => {
+    setReplyTo(null);
+  };
+
   const sendMessage = async () => {
     const payload = text.trim();
     if (!payload) return;
@@ -79,10 +104,15 @@ export default function ChatScreen({ route, navigation }: Props) {
       setSending(true);
       await api.post(
         '/messages',
-        { chatId, text: payload },
+        {
+          chatId,
+          text: payload,
+          replyToId: replyTo?.id,
+        },
         { headers: { Authorization: `Bearer ${token}` } },
       );
       setText('');
+      setReplyTo(null);
       await loadMessages();
     } catch (err: any) {
       Alert.alert(
@@ -127,16 +157,56 @@ export default function ChatScreen({ route, navigation }: Props) {
           }}
           renderItem={({ item }) => {
             const isMine = item.senderId === userId;
+            const isLikedByMe = item.likes?.some(like => like.user.id === userId);
+            const likeCount = item._count?.likes || 0;
+
             return (
-              <View style={[styles.bubbleWrap, isMine ? styles.mineWrap : styles.otherWrap]}>
+              <Pressable
+                style={[styles.bubbleWrap, isMine ? styles.mineWrap : styles.otherWrap]}
+                onLongPress={() => {
+                  Alert.alert(
+                    'Message options',
+                    'Choose an action',
+                    [
+                      { text: 'Reply', onPress: () => handleReply(item) },
+                      { text: 'Like', onPress: () => handleLike(item.id) },
+                      { text: 'Cancel', style: 'cancel' },
+                    ],
+                  );
+                }}
+                onPress={() => {
+                  // Double tap for like
+                  if (isLikedByMe) {
+                    handleLike(item.id);
+                  }
+                }}
+                delayLongPress={500}
+              >
                 <View style={[styles.bubble, isMine ? styles.mineBubble : styles.otherBubble]}>
+                  {item.replyTo && (
+                    <View style={styles.replyContainer}>
+                      <Text style={styles.replyAuthor}>
+                        Replying to {item.replyTo.sender?.username || 'User'}
+                      </Text>
+                      <Text style={styles.replyText} numberOfLines={1}>
+                        {item.replyTo.text}
+                      </Text>
+                    </View>
+                  )}
                   {!isMine && (
                     <Text style={styles.author}>{item.sender?.username || 'User'}</Text>
                   )}
                   <Text style={styles.messageText}>{item.text}</Text>
-                  <Text style={styles.time}>{formatTime(item.createdAt)}</Text>
+                  <View style={styles.messageFooter}>
+                    <Text style={styles.time}>{formatTime(item.createdAt)}</Text>
+                    {likeCount > 0 && (
+                      <View style={styles.likesContainer}>
+                        <Text style={styles.likeText}>❤️ {likeCount}</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-              </View>
+              </Pressable>
             );
           }}
           ListEmptyComponent={<Text style={styles.emptyText}>No messages yet</Text>}
@@ -155,17 +225,29 @@ export default function ChatScreen({ route, navigation }: Props) {
         )}
 
         <View style={styles.composer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Write a message"
-            placeholderTextColor="#8194b8"
-            value={text}
-            onChangeText={setText}
-            multiline
-          />
-          <Pressable style={styles.send} onPress={sendMessage} disabled={sending}>
-            <Text style={styles.sendText}>{sending ? '...' : '➤'}</Text>
-          </Pressable>
+          {replyTo && (
+            <View style={styles.replyPreview}>
+              <Text style={styles.replyPreviewText}>
+                Replying to {replyTo.sender?.username || 'User'}: {replyTo.text}
+              </Text>
+              <Pressable onPress={cancelReply} style={styles.cancelReply}>
+                <Text style={styles.cancelReplyText}>✕</Text>
+              </Pressable>
+            </View>
+          )}
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Write a message"
+              placeholderTextColor="#8194b8"
+              value={text}
+              onChangeText={setText}
+              multiline
+            />
+            <Pressable style={styles.send} onPress={sendMessage} disabled={sending}>
+              <Text style={styles.sendText}>{sending ? '...' : '➤'}</Text>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -306,5 +388,63 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 20,
     fontWeight: '700',
+  },
+  replyContainer: {
+    backgroundColor: '#1e293b',
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#60a5fa',
+  },
+  replyAuthor: {
+    color: '#60a5fa',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  replyText: {
+    color: '#cbd5e1',
+    fontSize: 14,
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  likesContainer: {
+    marginLeft: 8,
+  },
+  likeText: {
+    color: '#ef4444',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  replyPreview: {
+    backgroundColor: '#1e293b',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  replyPreviewText: {
+    color: '#cbd5e1',
+    fontSize: 14,
+    flex: 1,
+  },
+  cancelReply: {
+    marginLeft: 8,
+    padding: 4,
+  },
+  cancelReplyText: {
+    color: '#ef4444',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
   },
 });

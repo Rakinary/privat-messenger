@@ -19,12 +19,43 @@ export type ChatMember = {
 
 export type ChatMessage = {
   id: string;
-  text: string;
+  text: string | null;
   senderId: string;
+  chatId: string;
+  type?: string;
+  attachmentId?: string | null;
+  replyToId?: string | null;
   createdAt?: string;
+  editedAt?: string | null;
+  deletedAt?: string | null;
   sender?: {
     id: string;
     username?: string;
+  };
+  attachment?: {
+    id: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+    url: string;
+  };
+  replyTo?: {
+    id: string;
+    text: string | null;
+    sender?: {
+      id: string;
+      username?: string;
+    };
+  };
+  likes?: {
+    id: string;
+    user: {
+      id: string;
+      username: string;
+    };
+  }[];
+  _count?: {
+    likes: number;
   };
 };
 
