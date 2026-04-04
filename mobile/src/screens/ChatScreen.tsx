@@ -605,6 +605,15 @@ export default function ChatScreen({ route, navigation }: Props) {
     shouldStickToBottomRef.current = true;
   }, []);
 
+  useEffect(() => {
+    if (!initialLoading) {
+      const timer = setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [initialLoading]);
+
   const scrollToBottom = (animated = false) => {
     if (messages.length > 0) {
       flatListRef.current?.scrollToEnd({ animated });
