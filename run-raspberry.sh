@@ -61,12 +61,7 @@ if [ -z "$BACKEND_API_URL" ]; then
 fi
 echo "✅ Backend tunnel: $BACKEND_API_URL"
 
-# ── 3. Cloudflare tunnel for Metro/Expo bundler (port 8081) ─────────────────
-EXPO_PORT=8081
-start_tunnel "Metro bundler" "$EXPO_PORT"
-METRO_TUNNEL_URL="$LAST_TUNNEL_URL"
-
-# ── 4. Start Expo ───────────────────────────────────────────────────────────
+# ── 3. Start Expo with --tunnel (requires expo login once) ──────────────────
 echo "📱 Starting Expo..."
 cd "$SCRIPT_DIR/mobile"
 
@@ -78,16 +73,15 @@ EXPO_PUBLIC_API_URL=$BACKEND_API_URL
 EOF
 
 echo ""
-echo "🔗 Backend URL:  $BACKEND_API_URL"
-echo "🔗 Metro tunnel: $METRO_TUNNEL_URL"
+echo "🔗 Backend URL: $BACKEND_API_URL"
+echo ""
+echo "ℹ️  If you see a login prompt — run 'npx expo login' first, then restart this script."
 echo ""
 
 export EXPO_PUBLIC_API_URL="$BACKEND_API_URL"
-# This makes the QR code use the CF tunnel URL instead of localhost
-export EXPO_PACKAGER_PROXY_URL="$METRO_TUNNEL_URL"
 
-# Run without --tunnel (no Expo login needed)
-# stdin redirected from /dev/null to suppress interactive prompts
-npx expo start --host localhost --port "$EXPO_PORT" --clear < /dev/null
+# --tunnel uses Expo's own tunnel (reliable, works on any network)
+# requires one-time: npx expo login
+npx expo start --tunnel --clear
 
 cd "$SCRIPT_DIR"
