@@ -4,19 +4,14 @@ set -e
 echo "🚀 Starting Messenger on Raspberry Pi..."
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-EXPO_PORT=8081
-CLOUDFLARE_PIDS=""
-CLOUDFLARE_LOG_FILES=""
-LAST_TUNNEL_URL=""
-BACKEND_API_URL=""
+CLOUDFLARE_PID=""
+CLOUDFLARE_LOG=""
 
 cleanup() {
     echo ""
     echo "🛑 Stopping services..."
-    kill $CLOUDFLARE_PIDS $MOBILE_PID 2>/dev/null || true
-    for log_file in $CLOUDFLARE_LOG_FILES; do
-        [ -f "$log_file" ] && rm -f "$log_file"
-    done
+    [ -n "$CLOUDFLARE_PID" ] && kill "$CLOUDFLARE_PID" 2>/dev/null || true
+    [ -n "$CLOUDFLARE_LOG" ] && rm -f "$CLOUDFLARE_LOG"
     exit 0
 }
 trap cleanup INT TERM
@@ -27,13 +22,8 @@ cd "$SCRIPT_DIR/backend"
 
 if ! pm2 describe messenger > /dev/null 2>&1; then
     echo "📦 Backend not running, starting..."
-    if [ ! -d "node_modules" ]; then
-        npm install
-    fi
-    if [ ! -d "dist" ]; then
-        echo "🔨 Building backend..."
-        npm run build
-    fi
+    [ ! -d "node_modules" ] && npm install
+    [ ! -d "dist" ] && { echo "🔨 Building..."; npm run build; }
     npx prisma migrate deploy
     pm2 start dist/src/main.js --name messenger
     pm2 save
@@ -43,83 +33,59 @@ fi
 
 cd "$SCRIPT_DIR"
 
-# ── Helper: start cloudflare tunnel ────────────────────────────────────────
-start_tunnel() {
-    local name="$1"
-    local port="$2"
-
-    if ! command -v cloudflared >/dev/null 2>&1; then
-        echo "❌ cloudflared not found. Install with:"
-        echo "   curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -o cloudflared"
-        echo "   chmod +x cloudflared && sudo mv cloudflared /usr/local/bin/"
-        exit 1
-    fi
-
-    echo "☁️  Starting Cloudflare tunnel for $name (port $port)..."
-    local log_file
-    log_file=$(mktemp /tmp/cloudflared-XXXXXX.log)
-    cloudflared tunnel --url "http://localhost:$port" --no-autoupdate > "$log_file" 2>&1 &
-    local pid=$!
-    CLOUDFLARE_PIDS="$CLOUDFLARE_PIDS $pid"
-    CLOUDFLARE_LOG_FILES="$CLOUDFLARE_LOG_FILES $log_file"
-
-    for _ in $(seq 1 30); do
-        if ! kill -0 "$pid" 2>/dev/null; then
-            echo "❌ Cloudflare tunnel ($name) exited unexpectedly:"
-            cat "$log_file"
-            exit 1
-        fi
-        LAST_TUNNEL_URL=$(grep -Eo 'https://[-[:alnum:]]+\.trycloudflare\.com' "$log_file" | head -n 1)
-        if [ -n "$LAST_TUNNEL_URL" ]; then
-            echo "✅ Tunnel ready ($name): $LAST_TUNNEL_URL"
-            return 0
-        fi
-        sleep 1
-    done
-
-    echo "❌ Timed out waiting for tunnel ($name):"
-    cat "$log_file"
+# ── 2. Cloudflare tunnel for backend (port 3000) ────────────────────────────
+if ! command -v cloudflared >/dev/null 2>&1; then
+    echo "❌ cloudflared not found. Install:"
+    echo "   curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -o cloudflared"
+    echo "   chmod +x cloudflared && sudo mv cloudflared /usr/local/bin/"
     exit 1
-}
+fi
 
-# ── 2. Tunnel for backend (port 3000) ───────────────────────────────────────
-start_tunnel "Backend API" 3000
-BACKEND_API_URL="$LAST_TUNNEL_URL"
+echo "☁️  Starting Cloudflare tunnel for backend (port 3000)..."
+CLOUDFLARE_LOG=$(mktemp /tmp/cloudflared-XXXXXX.log)
+cloudflared tunnel --url "http://localhost:3000" --no-autoupdate > "$CLOUDFLARE_LOG" 2>&1 &
+CLOUDFLARE_PID=$!
 
-# ── 3. Tunnel for Metro/Expo bundler ────────────────────────────────────────
-start_tunnel "Metro bundler" "$EXPO_PORT"
-METRO_TUNNEL_URL="$LAST_TUNNEL_URL"
+BACKEND_API_URL=""
+for _ in $(seq 1 30); do
+    if ! kill -0 "$CLOUDFLARE_PID" 2>/dev/null; then
+        echo "❌ Cloudflare tunnel exited:"; cat "$CLOUDFLARE_LOG"; exit 1
+    fi
+    BACKEND_API_URL=$(grep -Eo 'https://[-[:alnum:]]+\.trycloudflare\.com' "$CLOUDFLARE_LOG" | head -n 1)
+    [ -n "$BACKEND_API_URL" ] && break
+    sleep 1
+done
 
-# ── 4. Start Expo ───────────────────────────────────────────────────────────
+if [ -z "$BACKEND_API_URL" ]; then
+    echo "❌ Timed out waiting for tunnel:"; cat "$CLOUDFLARE_LOG"; exit 1
+fi
+echo "✅ Backend tunnel: $BACKEND_API_URL"
+
+# ── 3. Start Expo with built-in tunnel ──────────────────────────────────────
 echo "📱 Starting Expo..."
 cd "$SCRIPT_DIR/mobile"
 
-if [ ! -d "node_modules" ]; then
-    echo "📦 Installing mobile dependencies..."
-    npm install
+[ ! -d "node_modules" ] && { echo "📦 Installing mobile dependencies..."; npm install; }
+
+# Install ngrok for Expo tunnel if needed
+if ! npx @expo/ngrok --version > /dev/null 2>&1; then
+    echo "📦 Installing @expo/ngrok..."
+    npm install --save-dev @expo/ngrok@^4.0.3
 fi
 
-# Write .env with backend tunnel URL
+# Write backend URL to .env
 cat > .env << EOF
 EXPO_PUBLIC_API_URL=$BACKEND_API_URL
 EOF
 
 echo ""
-echo "🔗 Backend URL:  $BACKEND_API_URL"
-echo "🔗 Metro tunnel: $METRO_TUNNEL_URL"
+echo "🔗 Backend URL: $BACKEND_API_URL"
 echo ""
 
 export EXPO_PUBLIC_API_URL="$BACKEND_API_URL"
-export EXPO_PACKAGER_PROXY_URL="$METRO_TUNNEL_URL"
 
-npx expo start --host localhost --port "$EXPO_PORT" --clear &
-MOBILE_PID=$!
+# --tunnel makes Expo create its own ngrok tunnel for Metro bundler
+# QR code will contain a public URL that works from any network
+npx expo start --tunnel --clear
 
-echo ""
-echo "🎉 All services running!"
-echo "📱 Scan the QR code above with Expo Go"
-echo "🌍 Works from any network (Cloudflare tunnels active)"
-echo ""
-echo "Press Ctrl+C to stop everything"
-
-wait
+cd "$SCRIPT_DIR"
