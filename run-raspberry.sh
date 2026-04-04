@@ -61,17 +61,16 @@ if [ -z "$BACKEND_API_URL" ]; then
 fi
 echo "✅ Backend tunnel: $BACKEND_API_URL"
 
-# ── 3. Start Expo with built-in tunnel ──────────────────────────────────────
+# ── 3. Cloudflare tunnel for Metro/Expo bundler (port 8081) ─────────────────
+EXPO_PORT=8081
+start_tunnel "Metro bundler" "$EXPO_PORT"
+METRO_TUNNEL_URL="$LAST_TUNNEL_URL"
+
+# ── 4. Start Expo ───────────────────────────────────────────────────────────
 echo "📱 Starting Expo..."
 cd "$SCRIPT_DIR/mobile"
 
 [ ! -d "node_modules" ] && { echo "📦 Installing mobile dependencies..."; npm install; }
-
-# Install ngrok for Expo tunnel if needed
-if ! npx @expo/ngrok --version > /dev/null 2>&1; then
-    echo "📦 Installing @expo/ngrok..."
-    npm install --save-dev @expo/ngrok@^4.0.3
-fi
 
 # Write backend URL to .env
 cat > .env << EOF
@@ -79,13 +78,16 @@ EXPO_PUBLIC_API_URL=$BACKEND_API_URL
 EOF
 
 echo ""
-echo "🔗 Backend URL: $BACKEND_API_URL"
+echo "🔗 Backend URL:  $BACKEND_API_URL"
+echo "🔗 Metro tunnel: $METRO_TUNNEL_URL"
 echo ""
 
 export EXPO_PUBLIC_API_URL="$BACKEND_API_URL"
+# This makes the QR code use the CF tunnel URL instead of localhost
+export EXPO_PACKAGER_PROXY_URL="$METRO_TUNNEL_URL"
 
-# CI=1 suppresses interactive prompts (login requests etc.)
-# --tunnel makes Expo use Cloudflare tunnel for Metro bundler
-CI=1 npx expo start --tunnel --clear --non-interactive
+# Run without --tunnel (no Expo login needed)
+# stdin redirected from /dev/null to suppress interactive prompts
+npx expo start --host localhost --port "$EXPO_PORT" --clear < /dev/null
 
 cd "$SCRIPT_DIR"
