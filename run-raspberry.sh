@@ -84,8 +84,8 @@ echo ""
 
 export EXPO_PUBLIC_API_URL="$BACKEND_API_URL"
 
-# --tunnel makes Expo create its own ngrok tunnel for Metro bundler
-# QR code will contain a public URL that works from any network
-npx expo start --tunnel --clear
+# CI=1 suppresses interactive prompts (login requests etc.)
+# --tunnel makes Expo use Cloudflare tunnel for Metro bundler
+CI=1 npx expo start --tunnel --clear --non-interactive
 
 cd "$SCRIPT_DIR"
